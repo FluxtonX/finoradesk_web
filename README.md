@@ -15,6 +15,9 @@ For this standalone GitHub repository, follow [Vercel deployment](DEPLOYMENT.md)
 Connect its native Git integration to deploy automatically from `main`; the
 Vercel root directory is `.` because this repository already contains the app.
 
+See [Stripe subscriptions](STRIPE.md) for test billing, hosted acceptance and the
+separate live-activation requirements.
+
 ```sh
 npm run format:check
 npm run typecheck

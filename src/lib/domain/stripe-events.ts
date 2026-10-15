@@ -26,3 +26,16 @@ export function eventIsSubscription(event: Stripe.Event) {
     "customer.subscription.resumed",
   ].includes(event.type);
 }
+
+export function cancellationScheduled(
+  subscription: Pick<
+    Stripe.Subscription,
+    "status" | "cancel_at_period_end" | "cancel_at"
+  >,
+) {
+  return (
+    subscription.status !== "canceled" &&
+    (subscription.cancel_at_period_end ||
+      typeof subscription.cancel_at === "number")
+  );
+}

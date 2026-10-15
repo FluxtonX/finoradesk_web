@@ -2,11 +2,12 @@ import { workspaceContext } from "@/lib/server/context";
 import { billingConfigured, type WebBilling } from "@/lib/server/billing";
 import { pilotPlans, PLAN_NOTICE } from "@/lib/domain/plans";
 import { BillingPlans } from "@/components/billing-plans";
+import { BillingConfirmation } from "@/components/billing-confirmation";
 import { PageHeading, Notice, Status, DateLabel } from "@/components/ui";
 export default async function Billing({
   searchParams,
 }: {
-  searchParams: Promise<{ checkout?: string; access?: string }>;
+  searchParams: Promise<{ checkout?: string; access?: string; plan?: string }>;
 }) {
   const c = await workspaceContext(),
     canAdmin = ["owner", "admin"].includes(c.role);
@@ -29,16 +30,22 @@ export default async function Billing({
         title="Room for your next chapter."
         description="Simple, adjustable pilot plans for your business."
       />
+      {enabled && process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") && (
+        <Notice>Test billing is enabled. No real money is charged.</Notice>
+      )}
       {p.access === "required" && (
         <Notice>
           Choose an active subscription to create or change financial records.
         </Notice>
       )}
-      {p.checkout === "returned" && (
-        <Notice>
-          Checkout returned. Subscription status updates only after a verified
-          provider event.
-        </Notice>
+      {p.checkout === "returned" && canAdmin && enabled && (
+        <BillingConfirmation
+          confirmed={
+            c.canWrite &&
+            ["active", "trialing"].includes(state?.status ?? "") &&
+            (!p.plan || state?.plan_id === p.plan)
+          }
+        />
       )}
       {p.checkout === "cancelled" && (
         <Notice>

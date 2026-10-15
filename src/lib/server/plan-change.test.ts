@@ -16,7 +16,10 @@ describe("confirmed subscription plan changes", () => {
       },
       products: { create: vi.fn(async () => ({ id: "prod_test" })) },
       prices: { create: vi.fn(async () => ({ id: "price_test" })) },
-      billingPortal: { sessions: { create: sessions } },
+      billingPortal: {
+        configurations: { create: vi.fn(async () => ({ id: "bpc_confirm" })) },
+        sessions: { create: sessions },
+      },
     };
     const result = await planChangePortal(
       provider as unknown as Stripe,
@@ -28,6 +31,7 @@ describe("confirmed subscription plan changes", () => {
     );
     expect(result.url).toContain("billing.stripe.com");
     expect(sessions.mock.calls[0][0]).toMatchObject({
+      configuration: "bpc_confirm",
       flow_data: {
         type: "subscription_update_confirm",
         subscription_update_confirm: {
@@ -36,6 +40,16 @@ describe("confirmed subscription plan changes", () => {
         },
       },
     });
+    expect(provider.billingPortal.configurations.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        features: expect.objectContaining({
+          subscription_update: expect.objectContaining({
+            products: [{ product: "prod_test", prices: ["price_test"] }],
+          }),
+        }),
+      }),
+      expect.anything(),
+    );
   });
   it("requires review for subscriptions with multiple line items", async () => {
     const provider = {

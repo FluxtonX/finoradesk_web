@@ -3,6 +3,7 @@ import {
   verifyStripeEvent,
   eventIsSubscription,
   subscriptionMetadata,
+  cancellationScheduled,
 } from "@/lib/domain/stripe-events";
 import {
   stripeClient,
@@ -37,6 +38,14 @@ export async function POST(request: NextRequest) {
     const subscription = await stripeClient().subscriptions.retrieve(
       snapshot.id,
     );
+    // A shared Stripe account also emits events for other applications.
+    if (
+      !subscription.metadata.organization_id ||
+      !subscription.metadata.plan_id ||
+      (subscription.metadata.application &&
+        subscription.metadata.application !== "finoredesk")
+    )
+      return NextResponse.json({ received: true, ignored: true });
     let meta = subscriptionMetadata(subscription.metadata);
     const productId = subscription.items.data[0]?.price.product;
     if (productId) {
@@ -73,7 +82,7 @@ export async function POST(request: NextRequest) {
       plan: meta.plan_id,
       subscription_status: subscription.status,
       period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
-      cancelling: subscription.cancel_at_period_end,
+      cancelling: cancellationScheduled(subscription),
       provider_event: event.id,
       provider_event_type: event.type,
       provider_event_at: new Date(event.created * 1000).toISOString(),

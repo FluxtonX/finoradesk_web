@@ -4,6 +4,7 @@ import {
   verifyStripeEvent,
   subscriptionMetadata,
   eventIsSubscription,
+  cancellationScheduled,
 } from "./stripe-events";
 import { pilotPlans } from "./plans";
 describe("provider boundary", () => {
@@ -53,5 +54,35 @@ describe("provider boundary", () => {
     expect(pilotPlans({ PILOT_STARTER_CENTS: "2500" })[0].cents).toBe(2500);
     expect(pilotPlans({ PILOT_STARTER_CENTS: "NaN" })[0].cents).toBe(1900);
     expect(pilotPlans({ PILOT_STARTER_CENTS: "-1" })[0].cents).toBe(1900);
+  });
+  it("recognises timestamp-based and legacy scheduled cancellation without calling an ended subscription scheduled", () => {
+    expect(
+      cancellationScheduled({
+        status: "active",
+        cancel_at_period_end: false,
+        cancel_at: 1900000000,
+      }),
+    ).toBe(true);
+    expect(
+      cancellationScheduled({
+        status: "active",
+        cancel_at_period_end: true,
+        cancel_at: null,
+      }),
+    ).toBe(true);
+    expect(
+      cancellationScheduled({
+        status: "active",
+        cancel_at_period_end: false,
+        cancel_at: null,
+      }),
+    ).toBe(false);
+    expect(
+      cancellationScheduled({
+        status: "canceled",
+        cancel_at_period_end: false,
+        cancel_at: 1900000000,
+      }),
+    ).toBe(false);
   });
 });

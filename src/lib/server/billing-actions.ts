@@ -149,11 +149,12 @@ export async function checkout(input: unknown): Promise<ActionResult> {
     const session = await stripe.checkout.sessions.create(
       {
         mode: "subscription",
+        adaptive_pricing: { enabled: false },
         expires_at: Math.floor(Date.parse(reservation.expires_at) / 1000),
         payment_method_types: ["card"],
         customer,
         client_reference_id: organization.id,
-        success_url: `${origin}/workspace/billing?checkout=returned`,
+        success_url: `${origin}/workspace/billing?checkout=returned&plan=${plan.id}`,
         cancel_url: `${origin}/workspace/billing?checkout=cancelled`,
         line_items: [
           {
@@ -177,7 +178,15 @@ export async function checkout(input: unknown): Promise<ActionResult> {
           actor_id: user.id,
         },
         subscription_data: {
-          metadata: { organization_id: organization.id, plan_id: plan.id },
+          metadata: {
+            application: "finoredesk",
+            organization_id: organization.id,
+            plan_id: plan.id,
+          },
+          ...(!process.env.STRIPE_GST_TAX_RATE_ID ||
+          process.env.STRIPE_AUTOMATIC_TAX === "true"
+            ? {}
+            : { default_tax_rates: [process.env.STRIPE_GST_TAX_RATE_ID] }),
         },
         customer_update: { address: "auto" },
       },
@@ -223,6 +232,7 @@ export async function billingPortal(): Promise<ActionResult> {
     if (!current) throw new Error("No billing account is linked.");
     const session = await stripeClient().billingPortal.sessions.create({
       customer: current.stripe_customer_id,
+      configuration: process.env.STRIPE_PORTAL_CONFIGURATION_ID,
       return_url: `${siteUrl()}/workspace/billing`,
     });
     return {
