@@ -11,6 +11,10 @@ Open http://127.0.0.1:3000. Copy `.env.example` to ignored `.env.local` on a fre
 
 See [hosted setup](../docs/web_setup.md), [current scope](../project.md), [web status](../docs/web_implementation_status.md) and [pilot checklist](../docs/web_pilot_checklist.md).
 
+For this standalone GitHub repository, follow [Vercel deployment](DEPLOYMENT.md).
+Connect its native Git integration to deploy automatically from `main`; the
+Vercel root directory is `.` because this repository already contains the app.
+
 ```sh
 npm run format:check
 npm run typecheck
