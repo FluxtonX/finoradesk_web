@@ -100,3 +100,28 @@ References: [sending API](https://resend.com/docs/api-reference/emails/send-emai
 [signed callbacks](https://resend.com/docs/webhooks/verify-webhooks-requests),
 [test events](https://resend.com/docs/dashboard/emails/send-test-emails),
 [Supabase scheduling/Vault](https://supabase.com/docs/guides/functions/schedule-functions).
+
+## Hosted verification — 16 October 2026
+
+The original key authenticated successfully, the app-specific signed webhook
+is enabled and the sensitive Production variables are configured. The Resend
+application deployed successfully at the stable Vercel alias. The hosted worker
+submitted a clearly labelled TEST invoice/PDF to the owner-confirmed account
+inbox; both Resend's actual callback and email lookup confirm mail-server
+delivery. Human inbox placement/PDF confirmation remains a separate check.
+The named Supabase Cron job ran successfully, its pg_net HTTP request returned
+200 and the real reminder callback/provider lookup confirm delivery. The
+next reminder advanced seven calendar days at 09:00 business time. Test mode
+blocked a recipient outside the allowlist before provider submission. Payment
+and voiding cancelled queued fixture reminders without sending them. The
+dedicated fixture account/business were disabled after acceptance.
+
+An explicit hosted test harness is available under
+`tests/integration/resend-hosted.mjs`. It creates only a dedicated TEST tenant
+and uses the existing controlled recipient setting; it never runs in the unit
+suite or application startup. It requires `RUN_HOSTED_EMAIL_TEST=true` and test
+mode. Modes: `prepare`, `send`, `check`, `reminder`, `schedule`, `security`,
+`allowlist`, `stop`, `paid-void-stop`, `cleanup`, `status`. Inspect an existing fixture before rerunning;
+`reminder` advances only that fixture's schedule to exercise real Cron execution.
+Cleanup retains financial/audit history, disables the test organisation/account
+and removes its private temporary session file.
