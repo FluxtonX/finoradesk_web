@@ -108,7 +108,8 @@ is enabled and the sensitive Production variables are configured. The Resend
 application deployed successfully at the stable Vercel alias. The hosted worker
 submitted a clearly labelled TEST invoice/PDF to the owner-confirmed account
 inbox; both Resend's actual callback and email lookup confirm mail-server
-delivery. Human inbox placement/PDF confirmation remains a separate check.
+delivery. The owner confirmed receipt of the invoice email and that its PDF opens.
+Exact mailbox folder and separate human reminder receipt were not specified.
 The named Supabase Cron job ran successfully, its pg_net HTTP request returned
 200 and the real reminder callback/provider lookup confirm delivery. The
 next reminder advanced seven calendar days at 09:00 business time. Test mode
