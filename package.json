@@ -14,7 +14,10 @@
     "test": "vitest run",
     "test:browser": "playwright test",
     "format": "prettier --write src tests *.ts *.json",
-    "format:check": "prettier --check src tests *.ts *.json"
+    "format:check": "prettier --check src tests *.ts *.json",
+    "email:setup:test": "node scripts/setup-resend-test.mjs",
+    "email:sync:vercel": "node scripts/sync-email-vercel.mjs",
+    "email:setup:scheduler": "node scripts/setup-email-scheduler.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",
@@ -29,6 +32,7 @@
     "react-dom": "19.3.1",
     "server-only": "^0.0.1",
     "stripe": "^20.4.0",
+    "svix": "^2.8.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -19,6 +19,8 @@ beforeAll(async () => {
     "202610140001_foundation.sql",
     "202610140002_invoicing.sql",
     "202610150013_web_delivery.sql",
+    "202610160016_web_resend.sql",
+    "202610160017_web_delivery_finish.sql",
   ])
     await db.exec(await readFile(`../supabase/migrations/${name}`, "utf8"));
   await db.exec(
@@ -180,5 +182,156 @@ describe("web email and reminder SQL", () => {
     await expect(
       db.query("select public.set_web_reminder($1,$2,true)", [org, invoice]),
     ).rejects.toThrow("three-reminder limit");
+  });
+  it("correlates Resend callbacks, handles races and retains terminal suppression", async () => {
+    await actor();
+    const id = (
+      await db.query<{ id: string }>(
+        "select public.request_web_invoice_delivery($1,$2,'invoice',$3) as id",
+        [org, invoice, randomUUID()],
+      )
+    ).rows[0].id;
+    await db.exec("set role service_role");
+    await db.query(
+      "update public.web_email_deliveries set state='processing' where id=$1",
+      [id],
+    );
+    const message = randomUUID();
+    const event = (
+      key: string,
+      type: string,
+      recipient = "recipient@example.test",
+      providerId = message,
+    ) =>
+      db.query<{ applied: boolean }>(
+        "select public.apply_web_resend_event($1,$2,$3,$4,now(),$5) as applied",
+        [providerId, id, key, type, recipient],
+      );
+    expect(
+      (await event("wrong-recipient", "delivered", "other@example.test"))
+        .rows[0].applied,
+    ).toBe(false);
+    expect((await event("resend:delivered", "delivered")).rows[0].applied).toBe(
+      true,
+    );
+    await event("resend:delivered", "delivered");
+    await event("resend:late-failure", "failed");
+    expect(
+      (
+        await db.query<{ state: string }>(
+          "select state from public.web_email_deliveries where id=$1",
+          [id],
+        )
+      ).rows[0].state,
+    ).toBe("delivered");
+    expect(
+      (
+        await event(
+          "wrong-message",
+          "spam",
+          "recipient@example.test",
+          randomUUID(),
+        )
+      ).rows[0].applied,
+    ).toBe(false);
+    await event("resend:complaint", "spam");
+    await event("resend:late-delivery", "delivered");
+    expect(
+      (
+        await db.query<{ state: string }>(
+          "select state from public.web_email_deliveries where id=$1",
+          [id],
+        )
+      ).rows[0].state,
+    ).toBe("complained");
+    expect(
+      (
+        await db.query(
+          "select * from public.web_email_events where event_key='resend:delivered'",
+        )
+      ).rows,
+    ).toHaveLength(1);
+    await actor();
+    await expect(event("forged", "delivered")).rejects.toThrow(
+      "permission denied",
+    );
+  });
+  it("atomically finishes worker state and never regresses a callback", async () => {
+    await actor();
+    const id = (
+      await db.query<{ id: string }>(
+        "select public.request_web_invoice_delivery($1,$2,'invoice',$3) as id",
+        [org, invoice, randomUUID()],
+      )
+    ).rows[0].id;
+    await db.exec("set role service_role");
+    const lease = randomUUID();
+    const message = randomUUID();
+    await db.query(
+      "update public.web_email_deliveries set state='processing',lease_token=$2 where id=$1",
+      [id, lease],
+    );
+    const finish = (token: string) =>
+      db.query<{ finished: boolean }>(
+        "select public.finish_web_resend_attempt($1,$2,'accepted',null,$3) as finished",
+        [id, token, message],
+      );
+    expect((await finish(randomUUID())).rows[0].finished).toBe(false);
+    expect((await finish(lease)).rows[0].finished).toBe(true);
+    await db.query(
+      "select public.apply_web_resend_event($1,$2,'resend:atomic','delivered',now(),'recipient@example.test')",
+      [message, id],
+    );
+    expect((await finish(lease)).rows[0].finished).toBe(false);
+    expect(
+      (
+        await db.query<{ state: string; status: string }>(
+          "select d.state,j.status from public.web_email_deliveries d join public.notification_jobs j on j.id=d.notification_job_id where d.id=$1",
+          [id],
+        )
+      ).rows[0],
+    ).toEqual({ state: "delivered", status: "sent" });
+    await actor();
+    await expect(finish(lease)).rejects.toThrow("permission denied");
+  });
+  it("does not claim legacy provider acceptance for new Resend callbacks", async () => {
+    await db.exec("set role service_role");
+    await db.query(
+      "update public.web_email_deliveries set provider='brevo' where id=$1",
+      [delivery],
+    );
+    expect(
+      (
+        await db.query<{ applied: boolean }>(
+          "select public.apply_web_resend_event($1,$2,'resend:legacy','delivered',now(),'recipient@example.test') as applied",
+          [randomUUID(), delivery],
+        )
+      ).rows[0].applied,
+    ).toBe(false);
+  });
+  it("stops reminders for an archived business without aborting the batch", async () => {
+    await db.exec("set role service_role");
+    await db.query(
+      "update public.web_reminder_schedules set enabled=true,opted_in=true,runs=0,next_run_at=now()-interval '1 minute'",
+    );
+    await db.exec("reset role");
+    await db.query("update public.organizations set active=false where id=$1", [
+      org,
+    ]);
+    await db.exec("set role service_role");
+    expect(
+      (
+        await db.query<{ n: number }>(
+          "select public.run_due_web_reminders() as n",
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await db.query<{ enabled: boolean }>(
+          "select enabled from public.web_reminder_schedules",
+        )
+      ).rows[0].enabled,
+    ).toBe(false);
   });
 });

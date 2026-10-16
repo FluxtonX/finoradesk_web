@@ -265,7 +265,7 @@ test("failed report offers retry and recovers", async ({ page, request }) => {
   ).toBeVisible();
 });
 
-test("provider and worker endpoints reject unauthenticated calls", async ({
+test("provider and worker endpoints reject calls while unavailable or unauthenticated", async ({
   request,
 }) => {
   expect(
@@ -273,7 +273,7 @@ test("provider and worker endpoints reject unauthenticated calls", async ({
   ).toBe(401);
   expect(
     (await request.post("/api/email/webhook", { data: {} })).status(),
-  ).toBe(401);
+  ).toBe(503);
   expect(
     (await request.post("/api/billing/webhook", { data: {} })).status(),
   ).toBe(503);

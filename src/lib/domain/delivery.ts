@@ -14,30 +14,35 @@ export function emailConfig(
 ): EmailConfig | null {
   if (
     !["test", "live"].includes(env.EMAIL_MODE ?? "") ||
-    !env.BREVO_API_KEY ||
+    !env.RESEND_API_KEY ||
     !env.SUPABASE_SERVICE_ROLE_KEY ||
     !env.CRON_SECRET ||
-    !env.EMAIL_WEBHOOK_SECRET
+    !env.RESEND_WEBHOOK_SECRET
   )
     return null;
   const email = z.email().safeParse(env.EMAIL_FROM);
   if (!email.success) return null;
+  if (env.EMAIL_MODE === "live" && email.data.endsWith("@resend.dev"))
+    return null;
   const allowlist = (env.EMAIL_TEST_RECIPIENTS ?? "")
     .split(",")
     .map((x) => x.trim().toLowerCase())
     .filter((x) => z.email().safeParse(x).success);
   if (env.EMAIL_MODE === "test" && !allowlist.length) return null;
-  const replyTo = env.EMAIL_REPLY_TO
-    ? { email: z.email().parse(env.EMAIL_REPLY_TO) }
-    : undefined;
+  const reply = env.EMAIL_REPLY_TO
+    ? z.email().safeParse(env.EMAIL_REPLY_TO)
+    : null;
+  if (reply && !reply.success) return null;
   return {
     mode: env.EMAIL_MODE as EmailMode,
-    apiKey: env.BREVO_API_KEY,
+    apiKey: env.RESEND_API_KEY,
     sender: {
-      name: env.EMAIL_FROM_NAME?.slice(0, 100) || "Finoredesk",
+      name: (env.EMAIL_FROM_NAME || "Finoredesk")
+        .replace(/[\r\n<>"\\]/g, " ")
+        .slice(0, 100),
       email: email.data,
     },
-    replyTo,
+    replyTo: reply?.success ? { email: reply.data } : undefined,
     allowlist,
   };
 }
@@ -50,16 +55,15 @@ export function escapeHtml(value: string) {
       ]!,
   );
 }
-export interface BrevoPayload {
-  sender: { name: string; email: string };
-  to: { email: string; name?: string }[];
-  replyTo?: { email: string };
+export interface ResendPayload {
+  from: string;
+  to: string[];
+  reply_to?: string;
   subject: string;
-  textContent: string;
-  htmlContent: string;
-  attachment: { name: string; content: string }[];
-  headers: Record<string, string>;
-  tags: string[];
+  text: string;
+  html: string;
+  attachments: { filename: string; content: string }[];
+  tags: { name: string; value: string }[];
 }
 export function prepareEmail(
   invoice: Invoice,
@@ -67,7 +71,7 @@ export function prepareEmail(
   id: string,
   pdfBase64: string,
   config: EmailConfig,
-): BrevoPayload {
+): ResendPayload {
   const recipient = z
     .email()
     .parse(invoice.contact_snapshot?.email)
@@ -96,22 +100,22 @@ export function prepareEmail(
     `Payment status reflects records entered by ${business}. If you have already paid, please reply so the records can be reviewed.`,
   ].filter(Boolean);
   return {
-    sender: config.sender,
-    to: [
-      { email: recipient, name: invoice.contact_snapshot?.name?.slice(0, 100) },
-    ],
-    replyTo: config.replyTo,
+    from: `${config.sender.name} <${config.sender.email}>`,
+    to: [recipient],
+    reply_to: config.replyTo?.email,
     subject,
-    textContent: paragraphs.join("\n\n"),
-    htmlContent: `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#173e35;background:#f6f7f2;padding:28px"><div style="max-width:580px;background:white;padding:32px;border-radius:16px"><h1 style="font-size:24px">${escapeHtml(number)}</h1>${paragraphs.map((p) => `<p style="line-height:1.65;white-space:pre-wrap">${escapeHtml(p)}</p>`).join("")}<p style="font-size:12px;color:#73817a">Prepared with Finoredesk</p></div></body></html>`,
-    attachment: [
+    text: paragraphs.join("\n\n"),
+    html: `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#173e35;background:#f6f7f2;padding:28px"><div style="max-width:580px;background:white;padding:32px;border-radius:16px"><h1 style="font-size:24px">${escapeHtml(number)}</h1>${paragraphs.map((p) => `<p style="line-height:1.65;white-space:pre-wrap">${escapeHtml(p)}</p>`).join("")}<p style="font-size:12px;color:#73817a">Prepared with Finoredesk</p></div></body></html>`,
+    attachments: [
       {
-        name: `${number.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`,
+        filename: `${number.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`,
         content: pdfBase64,
       },
     ],
-    headers: { "Idempotency-Key": id, "X-Mailin-custom": `finoredesk:${id}` },
-    tags: [`finoredesk:${id}`],
+    tags: [
+      { name: "application", value: "finoredesk" },
+      { name: "delivery_id", value: id },
+    ],
   };
 }
 export class DeliveryError extends Error {
@@ -122,22 +126,24 @@ export class DeliveryError extends Error {
     super(message);
   }
 }
-export async function submitBrevo(
-  payload: BrevoPayload,
+export async function submitResend(
+  payload: ResendPayload,
   apiKey: string,
+  deliveryId: string,
   fetcher: typeof fetch = fetch,
 ) {
   let response: Response;
   try {
-    response = await fetcher("https://api.brevo.com/v3/smtp/email", {
+    response = await fetcher("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "api-key": apiKey,
+        authorization: `Bearer ${apiKey}`,
+        "Idempotency-Key": `finoredesk/${deliveryId}`,
         accept: "application/json",
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(8000),
     });
   } catch {
     throw new DeliveryError(
@@ -150,7 +156,11 @@ export async function submitBrevo(
       "Provider rate limit. Retry will be delayed.",
       "retry",
     );
-  if (response.status >= 500)
+  if (
+    response.status >= 500 ||
+    response.status === 409 ||
+    response.status === 408
+  )
     throw new DeliveryError(
       "Provider acceptance is unknown after a server error.",
       "needs_review",
@@ -161,13 +171,10 @@ export async function submitBrevo(
       "failed",
     );
   const data = await response.json().catch(() => null);
-  if (typeof data?.messageId !== "string")
+  if (!z.uuid().safeParse(data?.id).success)
     throw new DeliveryError(
       "Provider response was incomplete. Review delivery before resending.",
       "needs_review",
     );
-  return data.messageId.replace(/^<|>$/g, "");
-}
-export function normaliseMessageId(value: string) {
-  return value.trim().replace(/^<|>$/g, "");
+  return data.id as string;
 }

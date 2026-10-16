@@ -76,8 +76,9 @@ the production build does not.
 
 - Stripe callback: `https://<domain>/api/billing/webhook`; use the endpoint's
   signing secret and start in test mode.
-- Brevo callback: `https://<domain>/api/email/webhook`; configure the verified
-  sender, controlled test inboxes and separate bearer webhook secret first.
+- Resend callback: `https://<domain>/api/email/webhook`; configure the sender,
+  controlled test inboxes and `RESEND_WEBHOOK_SECRET` for signed Svix callbacks.
+  Follow [EMAIL.md](EMAIL.md) for explicit setup and acceptance.
 - Reminder worker: `POST https://<domain>/api/jobs/invoice-delivery` with
   `Authorization: Bearer <CRON_SECRET>`. Its Node.js route allows 60 seconds.
   Use the hosted Supabase scheduler described in the backend workspace guide.

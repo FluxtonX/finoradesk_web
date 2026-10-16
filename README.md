@@ -29,3 +29,5 @@ npm run test:browser
 Browser tests use installed Chrome by default. To use Playwright's Chromium, install it with `npx playwright install chromium` and set `PLAYWRIGHT_BROWSER_CHANNEL=chromium`. The isolated HTTP fixture and PostgreSQL tests require no Docker and never use live customer/provider data. Fixtures live only under `tests/` or test modules.
 
 PDFs embed Noto Sans under its bundled licence in `assets/fonts/OFL.txt`. UI fonts ship through Fontsource packages; rendering does not depend on a runtime Google Fonts request.
+
+Invoice email/reminder provider setup: [EMAIL.md](EMAIL.md) (Resend).
