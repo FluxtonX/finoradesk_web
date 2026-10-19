@@ -3,14 +3,17 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { browserClient } from "@/lib/supabase/client";
+import { safeNext } from "@/lib/config";
 import { Brand } from "./brand";
 import { Field, Notice } from "./ui";
 export function SecuritySetup({
   required = false,
   challenge = false,
+  next = "/workspace",
 }: {
   required?: boolean;
   challenge?: boolean;
+  next?: string;
 }) {
   const router = useRouter();
   const [qr, setQr] = useState(""),
@@ -76,7 +79,7 @@ export function SecuritySetup({
         code,
       });
       if (error) throw error;
-      router.push("/workspace");
+      router.replace(safeNext(next));
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not verify.");

@@ -92,6 +92,21 @@ export function AuthForm({
       } else if (password) {
         if (pw !== form.get("confirm"))
           throw new Error("Passwords do not match.");
+        const { data: assurance, error: assuranceError } =
+          await db.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (assuranceError) throw assuranceError;
+        if (!assurance?.currentLevel)
+          throw new Error(
+            "Your session has expired. Please request a new reset link.",
+          );
+        if (
+          assurance.nextLevel === "aal2" &&
+          assurance.currentLevel !== "aal2"
+        ) {
+          router.replace("/security?challenge=1&next=/auth/password");
+          router.refresh();
+          return;
+        }
         const { error } = await db.auth.updateUser({ password: pw });
         if (error) throw error;
         setMessage("Password updated.");

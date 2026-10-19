@@ -1,7 +1,7 @@
 // Isolated browser-test double. This server is never imported by the application.
 // It cannot contact the hosted Supabase project, send mail or charge a provider.
 import { createServer } from "node:http";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 const ORG = "20000000-0000-4000-8000-000000000001",
   USER = "10000000-0000-4000-8000-000000000001";
 const now = () => new Date().toISOString();
@@ -37,7 +37,8 @@ const user = {
     },
   ],
 };
-function jwt() {
+const verifiedFactors = user.factors;
+function jwt(level = assurance) {
   const header = Buffer.from(
       JSON.stringify({ alg: "HS256", typ: "JWT" }),
     ).toString("base64url"),
@@ -46,7 +47,7 @@ function jwt() {
         sub: USER,
         aud: "authenticated",
         role: "authenticated",
-        aal: "aal2",
+        aal: level,
         email: user.email,
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 3600,
@@ -57,9 +58,9 @@ function jwt() {
       .digest("base64url");
   return `${header}.${payload}.${signature}`;
 }
-function session() {
+function session(level = assurance) {
   return {
-    access_token: jwt(),
+    access_token: jwt(level),
     refresh_token: "isolated-test-refresh-token",
     token_type: "bearer",
     expires_in: 3600,
@@ -69,10 +70,21 @@ function session() {
 }
 let store,
   role = "owner",
-  failReports = false;
+  failReports = false,
+  assurance = "aal2",
+  recovery,
+  passwordUpdates = 0,
+  passwordUpdateAttempts = 0,
+  challenges = new Set();
 function reset() {
   role = "owner";
   failReports = false;
+  assurance = "aal2";
+  user.factors = verifiedFactors;
+  recovery = null;
+  passwordUpdates = 0;
+  passwordUpdateAttempts = 0;
+  challenges = new Set();
   store = {
     contacts: [],
     web_record_reviews: [],
@@ -225,7 +237,7 @@ const server = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "*");
   res.setHeader(
     "Access-Control-Allow-Methods",
-    "GET,POST,PATCH,DELETE,OPTIONS,HEAD",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD",
   );
   res.setHeader("Access-Control-Expose-Headers", "Content-Range");
   if (req.method === "OPTIONS") {
@@ -254,8 +266,36 @@ const server = createServer(async (req, res) => {
       role = (await requestBody(req)).role;
       return send({ role });
     }
+    if (path === "/__test/auth") {
+      if (req.method === "POST") {
+        const config = await requestBody(req);
+        assurance = config.assurance ?? assurance;
+        user.factors = config.mfaEnabled === false ? [] : verifiedFactors;
+      }
+      return send({ passwordUpdates, passwordUpdateAttempts });
+    }
+    if (path === "/__test/recovery") {
+      const callback = new URL(recovery.redirectTo);
+      callback.searchParams.set("code", "isolated-recovery-code");
+      return send({ callback: callback.toString() });
+    }
     if (path === "/auth/v1/token") {
       const b = await requestBody(req);
+      if (url.searchParams.get("grant_type") === "pkce") {
+        const challenge = createHash("sha256")
+          .update(b.code_verifier ?? "")
+          .digest("base64url");
+        if (
+          !recovery ||
+          b.auth_code !== "isolated-recovery-code" ||
+          challenge !== recovery.codeChallenge
+        )
+          return send(
+            { msg: "Invalid recovery code", error_code: "bad_code_verifier" },
+            400,
+          );
+        recovery = null;
+      }
       if (b.password === "wrong")
         return send(
           {
@@ -266,19 +306,57 @@ const server = createServer(async (req, res) => {
         );
       return send(session());
     }
-    if (path === "/auth/v1/user") return send(user);
-    if (
-      path === "/auth/v1/logout" ||
-      path === "/auth/v1/recover" ||
-      path === "/auth/v1/resend"
-    )
+    if (path === "/auth/v1/user") {
+      if (req.method === "PUT") {
+        passwordUpdateAttempts += 1;
+        const claims = JSON.parse(
+          Buffer.from(
+            req.headers.authorization.split(".")[1],
+            "base64url",
+          ).toString(),
+        );
+        if (user.factors.length && claims.aal !== "aal2")
+          return send(
+            {
+              msg: "AAL2 session is required to update email or password when MFA is enabled.",
+              error_code: "insufficient_aal",
+            },
+            401,
+          );
+        passwordUpdates += 1;
+      }
+      return send(user);
+    }
+    if (path === "/auth/v1/recover") {
+      const body = await requestBody(req);
+      recovery = {
+        codeChallenge: body.code_challenge,
+        redirectTo: url.searchParams.get("redirect_to"),
+      };
       return send({});
-    if (path.includes("/challenge"))
+    }
+    if (path === "/auth/v1/logout" || path === "/auth/v1/resend")
+      return send({});
+    if (path.includes("/challenge")) {
+      const id = randomUUID();
+      challenges.add(id);
       return send({
-        id: randomUUID(),
+        id,
         expires_at: Math.floor(Date.now() / 1000) + 120,
       });
-    if (path.includes("/verify")) return send(session());
+    }
+    if (path.includes("/verify")) {
+      const body = await requestBody(req);
+      if (body.code !== "123456" || !challenges.delete(body.challenge_id))
+        return send(
+          {
+            msg: "Invalid authenticator code",
+            error_code: "mfa_verification_failed",
+          },
+          422,
+        );
+      return send(session("aal2"));
+    }
     if (path.startsWith("/storage/v1/object/sign/receipts/")) {
       if (req.method === "POST")
         return send({

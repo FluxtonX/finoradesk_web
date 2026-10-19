@@ -59,12 +59,20 @@ In Authentication → URL Configuration, add the exact production callback:
 
 ```text
 https://<your stable production domain>/auth/callback
+https://<your stable production domain>/auth/callback?next=/auth/password
+https://<your stable production domain>/auth/callback?next=/onboarding
 ```
 
 Keep the existing mobile and localhost callbacks. Do not replace the shared Site
 URL or email templates without checking their existing consumers. Verify signup,
 resend and password-reset links from the deployed browser. Owner/admin access
 requires authenticator MFA.
+
+Password recovery also requires the account's existing authenticator when MFA is
+enabled. The reset page sends an AAL1 recovery session to the MFA challenge and
+returns to the password form after verification. Test this in the same browser
+profile that requested the email. Sessions already at AAL2 and accounts without
+MFA can update directly. No MFA policy change or migration is needed.
 
 Review migration history and apply only missing compatible migrations through
 the separate backend workspace. Do not reset data or run migrations as a Vercel
