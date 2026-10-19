@@ -19,7 +19,16 @@ export default async function Billing({
         .maybeSingle()
     : null;
   const state = result?.data as WebBilling | null,
-    p = await searchParams;
+    p = await searchParams,
+    plans = pilotPlans(process.env),
+    subscriptionPlan = plans.find((plan) => plan.id === state?.plan_id),
+    currentPlan =
+      state?.stripe_subscription_id &&
+      ["active", "trialing"].includes(state.status) &&
+      (!state.current_period_end ||
+        new Date(state.current_period_end).getTime() > Date.now())
+        ? subscriptionPlan
+        : undefined;
   const enabled =
     billingConfigured() &&
     !result?.error &&
@@ -58,22 +67,38 @@ export default async function Billing({
         </Notice>
       )}
       {state?.stripe_subscription_id && (
-        <div className="panel" style={{ marginBottom: 20 }}>
-          <h2>{state.plan_id} plan</h2>
-          <Status value={state.status} />
+        <div className="panel billing-summary">
+          <div>
+            <span className="eyebrow">Your subscription</span>
+            <h2>
+              {subscriptionPlan
+                ? `${subscriptionPlan.name} plan`
+                : "Subscription details"}
+            </h2>
+            <Status value={state.status} />
+          </div>
           {state.current_period_end && (
-            <p style={{ marginTop: 12 }}>
-              Current period ends <DateLabel value={state.current_period_end} />
-              {state.cancel_at_period_end ? " · Cancellation scheduled" : ""}
-            </p>
+            <div className="billing-summary-period">
+              <p>
+                {state.cancel_at_period_end
+                  ? "Access until"
+                  : "Current period ends"}
+              </p>
+              <strong>
+                <DateLabel value={state.current_period_end} />
+              </strong>
+              {state.cancel_at_period_end && <p>Cancellation scheduled</p>}
+            </div>
           )}
         </div>
       )}
       <BillingPlans
-        plans={pilotPlans(process.env)}
+        plans={plans}
         enabled={enabled}
         canAdmin={canAdmin}
         hasCustomer={!!state?.stripe_customer_id}
+        currentPlanId={currentPlan?.id ?? null}
+        hasSubscription={!!state?.stripe_subscription_id}
       />
       <p className="muted" style={{ fontSize: 11, marginTop: 20 }}>
         {PLAN_NOTICE}

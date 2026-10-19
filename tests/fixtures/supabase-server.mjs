@@ -266,6 +266,22 @@ const server = createServer(async (req, res) => {
       role = (await requestBody(req)).role;
       return send({ role });
     }
+    if (path === "/__test/billing") {
+      const billing = await requestBody(req);
+      store.web_billing_profiles = [
+        {
+          organization_id: ORG,
+          stripe_customer_id: "cus_isolated_fixture",
+          stripe_subscription_id: "sub_isolated_fixture",
+          plan_id: billing.plan ?? "growth",
+          status: billing.status ?? "active",
+          current_period_end:
+            billing.periodEnd ?? new Date(Date.now() + 86400000).toISOString(),
+          cancel_at_period_end: billing.cancelling ?? false,
+        },
+      ];
+      return send({ configured: true });
+    }
     if (path === "/__test/auth") {
       if (req.method === "POST") {
         const config = await requestBody(req);

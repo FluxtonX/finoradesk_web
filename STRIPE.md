@@ -17,6 +17,11 @@ and signature checks, and protection of billing state.
   exports and support remain available after subscription access ends.
 - Cancellation through the portal is scheduled for the period end. Access
   continues until that period ends, subject to the provider's subscription state.
+- Billing cards highlight the current active/trial plan and disable its button.
+  Other plans offer upgrade or downgrade according to the plan tier, with Stripe
+  confirmation and the existing server-side team-capacity check. Scheduled
+  cancellation keeps the current-plan marker until access expires. Subscriptions
+  needing review open billing management rather than another checkout.
 - Plan changes use a Stripe confirmation screen. Only the server-selected plan
   is available in that confirmation session; the general portal cannot switch
   plans around the app's team-capacity check. Stripe previews proration; approved
