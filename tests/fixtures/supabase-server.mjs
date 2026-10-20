@@ -75,7 +75,10 @@ let store,
   recovery,
   passwordUpdates = 0,
   passwordUpdateAttempts = 0,
-  challenges = new Set();
+  challenges = new Set(),
+  missingReviews = false,
+  webIssueCalls = 0,
+  coreIssueCalls = 0;
 function reset() {
   role = "owner";
   failReports = false;
@@ -85,9 +88,13 @@ function reset() {
   passwordUpdates = 0;
   passwordUpdateAttempts = 0;
   challenges = new Set();
+  missingReviews = false;
+  webIssueCalls = 0;
+  coreIssueCalls = 0;
   store = {
     contacts: [],
     web_record_reviews: [],
+    web_business_preferences: [],
     invoices: [],
     invoice_items: [],
     invoice_payments: [],
@@ -265,6 +272,28 @@ const server = createServer(async (req, res) => {
     if (path === "/__test/role") {
       role = (await requestBody(req)).role;
       return send({ role });
+    }
+    if (path === "/__test/invoice-setup") {
+      if (req.method === "POST")
+        missingReviews = !!(await requestBody(req)).missingReviews;
+      return send({ missingReviews, webIssueCalls, coreIssueCalls });
+    }
+    if (path === "/__test/contacts") {
+      const { names } = await requestBody(req);
+      store.contacts = names.map((name) => ({
+        id: randomUUID(),
+        organization_id: ORG,
+        type: "customer",
+        name,
+        email: "customer@example.test",
+        phone: "",
+        abn: null,
+        address: "",
+        notes: "",
+        archived: false,
+        created_at: now(),
+      }));
+      return send({ count: store.contacts.length });
     }
     if (path === "/__test/billing") {
       const billing = await requestBody(req);
@@ -523,6 +552,18 @@ const server = createServer(async (req, res) => {
         return send(invoice.id);
       }
       if (fn === "issue_invoice" || fn === "issue_web_invoice") {
+        if (fn === "issue_web_invoice") {
+          webIssueCalls += 1;
+          if (missingReviews)
+            return send(
+              {
+                code: "PGRST202",
+                message:
+                  "Could not find the function public.issue_web_invoice(org, target_invoice) in the schema cache",
+              },
+              404,
+            );
+        } else coreIssueCalls += 1;
         const invoice = store.invoices.find((i) => i.id === b.target_invoice);
         if (!invoice) return send({ message: "Invoice unavailable" }, 404);
         Object.assign(invoice, {
@@ -637,6 +678,15 @@ const server = createServer(async (req, res) => {
     }
     if (path.startsWith("/rest/v1/")) {
       const table = path.split("/").at(-1);
+      if (table === "web_business_preferences" && missingReviews)
+        return send(
+          {
+            code: "PGRST205",
+            message:
+              "Could not find the table public.web_business_preferences in the schema cache",
+          },
+          404,
+        );
       let rows = rowsFor(table).filter((r) => matches(r, url));
       if (req.method === "POST") {
         const b = await requestBody(req);

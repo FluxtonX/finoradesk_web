@@ -94,12 +94,12 @@ test("customer → draft → issue → PDF → partial payment", async ({
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue("");
   await expect(page.getByLabel("Email", { exact: true })).toHaveValue("");
   await page.goto("/workspace/invoices/new");
-  await expect(
-    page.getByRole("option", { name: "Pilot customer" }),
-  ).toBeAttached();
   await page
-    .getByLabel("Customer", { exact: true })
-    .selectOption({ label: "Pilot customer" });
+    .getByRole("combobox", { name: "Customer", exact: true })
+    .fill("Pilot");
+  await page
+    .getByRole("option", { name: "Pilot customer", exact: true })
+    .click();
   await page.getByLabel("Description 1").fill("Consulting");
   await page.getByLabel("Unit price").fill("100.00");
   await expect(page.getByText("$110.00")).toBeVisible();

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { AiAssist } from "./ai-assist";
 import { ContactPicker } from "./contact-picker";
+import { Select } from "./select";
+import { QuantityInput } from "./quantity-input";
 import { Field, Notice } from "./ui";
 import { saveInvoice } from "@/lib/server/finance-actions";
 import {
@@ -108,7 +110,7 @@ export function InvoiceEditor({
     }
   }
   return (
-    <form className="panel" onSubmit={submit}>
+    <form className="panel invoice-editor" onSubmit={submit}>
       <div className="field-grid">
         <ContactPicker
           org={organization.id}
@@ -142,7 +144,7 @@ export function InvoiceEditor({
       <div className="section-title">
         <h2>What’s on this invoice?</h2>
         <span className="muted" style={{ fontSize: 11 }}>
-          AUD · Exact per-line rounding
+          AUD
         </span>
       </div>
       {draft.map((line, i) => (
@@ -156,15 +158,11 @@ export function InvoiceEditor({
               placeholder="Service or item"
             />
           </Field>
-          <Field label="Quantity">
-            <input
-              inputMode="decimal"
-              required
-              value={line.quantity}
-              onChange={(e) => update(i, "quantity", e.target.value)}
-              pattern="[0-9]+(\.[0-9]{1,4})?"
-            />
-          </Field>
+          <QuantityInput
+            value={line.quantity}
+            onChange={(value) => update(i, "quantity", value)}
+            line={i + 1}
+          />
           <Field label="Unit price">
             <input
               inputMode="decimal"
@@ -175,21 +173,21 @@ export function InvoiceEditor({
               pattern="[0-9]+(\.[0-9]{1,2})?"
             />
           </Field>
-          <Field label="GST treatment">
-            <select
-              value={line.tax_mode}
-              onChange={(e) => update(i, "tax_mode", e.target.value)}
-            >
-              {organization.gst_registered && (
-                <>
-                  <option value="exclusive">GST exclusive</option>
-                  <option value="inclusive">GST inclusive</option>
-                </>
-              )}
-              <option value="gst_free">GST free</option>
-              <option value="out_of_scope">Out of scope</option>
-            </select>
-          </Field>
+          <Select
+            label="GST treatment"
+            value={line.tax_mode}
+            onChange={(value) => update(i, "tax_mode", value)}
+            options={[
+              ...(organization.gst_registered
+                ? [
+                    { value: "exclusive", label: "GST exclusive" },
+                    { value: "inclusive", label: "GST inclusive" },
+                  ]
+                : []),
+              { value: "gst_free", label: "GST free" },
+              { value: "out_of_scope", label: "Out of scope" },
+            ]}
+          />
           <button
             className="icon-button"
             type="button"

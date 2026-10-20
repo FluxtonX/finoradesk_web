@@ -12,6 +12,7 @@ import {
 } from "@/lib/domain/validation";
 import { invoiceAmounts } from "@/lib/domain/money";
 import type { ActionResult } from "@/lib/domain/types";
+import { issueSavedInvoice } from "./invoice-issue";
 
 function refresh() {
   revalidatePath("/workspace", "layout");
@@ -92,12 +93,7 @@ export async function issueInvoice(id: string): Promise<ActionResult> {
   try {
     uuid.parse(id);
     const { db, organization } = await requireWriter();
-    checked(
-      await db.rpc("issue_web_invoice", {
-        org: organization.id,
-        target_invoice: id,
-      }),
-    );
+    await issueSavedInvoice(db, organization.id, id);
     refresh();
     return { ok: true, message: "Invoice issued. No email has been sent." };
   } catch (e) {

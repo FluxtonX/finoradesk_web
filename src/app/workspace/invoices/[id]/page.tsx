@@ -31,6 +31,14 @@ export default async function InvoiceDetail({
     .eq("organization_id", c.organization.id)
     .eq("invoice_id", id)
     .maybeSingle();
+  const reviewSetup =
+    i.state === "draft" && c.canWrite
+      ? await c.db
+          .from("web_business_preferences")
+          .select("invoice_approval_required")
+          .eq("organization_id", c.organization.id)
+          .maybeSingle()
+      : null;
   return (
     <>
       <PageHeading
@@ -46,14 +54,17 @@ export default async function InvoiceDetail({
           </Link>
         )}
       </PageHeading>
-      {i.state === "draft" && c.canWrite && (
-        <div className="toolbar">
-          <RequestReview kind="invoice" id={id} />
-          <Link href="/workspace/reviews" className="text-link">
-            Open review queue
-          </Link>
-        </div>
-      )}
+      {i.state === "draft" &&
+        c.canWrite &&
+        reviewSetup &&
+        !reviewSetup.error && (
+          <div className="toolbar">
+            <RequestReview kind="invoice" id={id} />
+            <Link href="/workspace/reviews" className="text-link">
+              Open review queue
+            </Link>
+          </div>
+        )}
       <div className="two-columns">
         <div>
           <section className="panel">

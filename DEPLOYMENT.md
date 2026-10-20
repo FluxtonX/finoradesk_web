@@ -74,6 +74,13 @@ returns to the password form after verification. Test this in the same browser
 profile that requested the email. Sessions already at AAL2 and accounts without
 MFA can update directly. No MFA policy change or migration is needed.
 
+Core invoice issuing works with the existing invoice RPC before the optional
+review module is installed. If the approval-aware RPC is missing, the app first
+checks the approval policy and uses the core issuer only when approval is not
+required. Permission, policy and other issuing errors remain blocking. Advanced
+reviews/approval workflows still require migration 015 from the backend workspace;
+the app never applies it during startup or invoice issue.
+
 Review migration history and apply only missing compatible migrations through
 the separate backend workspace. Do not reset data or run migrations as a Vercel
 install/build command. This standalone web repository does not contain the

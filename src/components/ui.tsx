@@ -7,6 +7,7 @@ import {
   Search,
 } from "lucide-react";
 import { EmptyArt } from "./brand";
+import { Select } from "./select";
 import type { PageResult } from "@/lib/domain/types";
 export function PageHeading({
   eyebrow,
@@ -124,19 +125,22 @@ export function SearchBar({
           defaultValue={query}
           placeholder={placeholder}
           aria-label={placeholder}
+          autoComplete="off"
+          spellCheck={false}
         />
       </label>
       {statuses.length > 0 && (
-        <select
+        <Select
+          key={status}
+          label="Filter by status"
           name="status"
           defaultValue={status}
-          aria-label="Filter by status"
-        >
-          <option value="">All statuses</option>
-          {statuses.map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
+          hideLabel
+          options={[
+            { value: "", label: "All statuses" },
+            ...statuses.map((s) => ({ value: s, label: s })),
+          ]}
+        />
       )}
       <button className="button button-secondary" type="submit">
         Search
